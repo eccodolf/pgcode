@@ -17,9 +17,58 @@ $(function () {
             this.showNozzle=true;
             this.highlightCurrentLayer=true;
             this.show2d=true;
+            this.fontFamily = 'Roboto';
+            this.fontVariant = 'regular';
+            this.showTransparentFuture = false;
+            this.futureOpacity = 0.2;
         };
         var pgSettings = new PGSettings();
         window.PGCSettings=pgSettings;
+
+        var googleFonts = {
+            'Brush Script MT': ['regular'],
+            'Roboto': ['regular', 'bold', 'italic', 'bold italic'],
+            'Open Sans': ['regular', 'bold', 'italic', 'bold italic'],
+            'Lobster': ['regular'],
+            'Pacifico': ['regular'],
+            'Lato': ['regular', 'bold', 'italic', 'bold italic'],
+            'Montserrat': ['regular', 'bold', 'italic', 'bold italic']
+        };
+
+        function loadGoogleFont(fontFamily) {
+            if (fontFamily === 'Brush Script MT') return;
+            if ($("link[href*='" + fontFamily.replace(/ /g, '+') + "']").length > 0) return;
+
+            var link = document.createElement('link');
+            link.href = 'https://fonts.googleapis.com/css?family=' + fontFamily.replace(/ /g, '+') + ':400,700,400italic,700italic&display=swap';
+            link.rel = 'stylesheet';
+            document.head.appendChild(link);
+        }
+
+        function applyFont() {
+            var family = pgSettings.fontFamily;
+            var variant = pgSettings.fontVariant;
+            
+            var weight = 'normal';
+            var style = 'normal';
+            
+            if (variant.includes('bold')) weight = 'bold';
+            if (variant.includes('italic')) style = 'italic';
+            
+            $('.pgclabel').css('font-family', family);
+            $('.pgclabel').css('font-weight', weight);
+            $('.pgclabel').css('font-style', style);
+            
+            // Apply to sub-labels to keep consistency
+            $('.label').css('font-family', family);
+            $('.label').css('font-weight', weight);
+            $('.label').css('font-style', style);
+             
+            // Also apply to logo to match the style
+            $('#pgclogo').css('font-family', family);
+            $('#pgclogo').css('font-weight', weight);
+            $('#pgclogo').css('font-style', style);
+        }
 
 
         //Scene globals
@@ -309,6 +358,8 @@ $(function () {
                 //gui.add(pgSettings, 'showMirror').onFinishChange(pgSettings.reloadGcode);
                 gui.add(pgSettings, 'orbitWhenIdle');
                 gui.add(pgSettings, 'showTravel');
+                gui.add(pgSettings, 'showTransparentFuture').name('Show Future').onChange(function(){ needRender=true; });
+                gui.add(pgSettings, 'futureOpacity', 0.0, 1.0).name('Future Opacity').onChange(function(){ needRender=true; });
 
                 //gui.add(pgSettings, 'fatLines').onFinishChange(pgSettings.reloadGcode);
                 //gui.add(pgSettings, 'reflections');
@@ -337,6 +388,43 @@ $(function () {
 
                 //todo handle finish change for this
                 gui.add(pgSettings, 'perspectiveCamera');
+
+                var fontFolder = gui.addFolder('Font Settings');
+                var fontController = fontFolder.add(pgSettings, 'fontFamily', Object.keys(googleFonts)).name('Font');
+                var variantController = fontFolder.add(pgSettings, 'fontVariant', googleFonts[pgSettings.fontFamily]).name('Style');
+                fontFolder.open();
+
+                fontController.onChange(function(value) {
+                     loadGoogleFont(value);
+                     
+                     var variants = googleFonts[value];
+                     if (!variants.includes(pgSettings.fontVariant)) {
+                         pgSettings.fontVariant = variants[0];
+                     }
+                     
+                     var select = variantController.domElement;
+                     if (select.tagName !== 'SELECT') select = select.querySelector('select');
+
+                     if (select) {
+                         select.innerHTML = '';
+                         variants.forEach(function(v) {
+                             var opt = document.createElement('option');
+                             opt.value = v;
+                             opt.innerHTML = v;
+                             select.appendChild(opt);
+                         });
+                     }
+                     variantController.setValue(pgSettings.fontVariant);
+                     
+                     applyFont();
+                });
+
+                variantController.onChange(function(value) {
+                    applyFont();
+                });
+                
+                loadGoogleFont(pgSettings.fontFamily);
+                applyFont();
                 
 
                 var folder = gui.addFolder('Windows');//hidden.

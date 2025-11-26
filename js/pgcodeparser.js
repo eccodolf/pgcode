@@ -232,6 +232,25 @@ function GCodeObject3(settings=null) {
         vertexColors: THREE.VertexColors
     } );
 
+    var transparentMaterial = new THREE.LineMaterial({
+        linewidth: 3, // in pixels
+        vertexColors: THREE.VertexColors,
+        transparent: true,
+        opacity: 0.2,
+        dashed: false
+    });
+    if(transparentMaterial.uniforms && transparentMaterial.uniforms.opacity) {
+        transparentMaterial.uniforms.opacity.value = 0.2;
+    }
+    transparentMaterial.resolution.set(window.innerWidth, window.innerHeight);
+
+    var transparentBasicMaterial = new THREE.LineBasicMaterial( {
+        color: 0xffffff,
+        vertexColors: THREE.VertexColors,
+        transparent: true,
+        opacity: 0.2
+    } );
+
     var gcodeGroup = new THREE.Group();
     gcodeGroup.name = 'gcode';
 
@@ -302,10 +321,18 @@ function GCodeObject3(settings=null) {
                     }
                 }
                 else {
-                    if(child.material.uuid!=defaultMat.uuid)
-                    {
-                        child.material=defaultMat;
-                        needUpdate=true;
+                    if(window.PGCSettings && window.PGCSettings.showTransparentFuture) {
+                         var targetMat = (child.geometry.type != "BufferGeometry") ? transparentMaterial : transparentBasicMaterial;
+                         if(child.material.uuid != targetMat.uuid) {
+                             child.material = targetMat;
+                             needUpdate = true;
+                         }
+                    } else {
+                        if(child.material.uuid!=defaultMat.uuid)
+                        {
+                            child.material=defaultMat;
+                            needUpdate=true;
+                        }
                     }
                 }
             }
@@ -338,15 +365,30 @@ function GCodeObject3(settings=null) {
     this.syncGcodeObjToLayer=function (layerNumber,lineNumber=Infinity,hideBefore=false)
     {
         var needUpdate=false;//only need update if visiblity changes
+        
+        if(window.PGCSettings && window.PGCSettings.futureOpacity !== undefined) {
+             transparentMaterial.opacity = window.PGCSettings.futureOpacity;
+             if(transparentMaterial.uniforms && transparentMaterial.uniforms.opacity) {
+                transparentMaterial.uniforms.opacity.value = window.PGCSettings.futureOpacity;
+             }
+             transparentBasicMaterial.opacity = window.PGCSettings.futureOpacity;
+        }
 
         gcodeGroup.traverse(function (child) {
+            if (child.name.startsWith("ghost")) return;
+            
             if (child.name.startsWith("layer#")) {
                 if (child.userData.layerNumber<layerNumber) {
 
-                    if(!child.visible || child.geometry.maxInstancedCount!=child.userData.numLines)
+                    if(!child.visible)
                         needUpdate = true;
 
                     child.visible = true;
+                    
+                    if(child.geometry.type!="BufferGeometry")
+                        child.material = curMaterial;
+                    else
+                        child.material = curLineBasicMaterial;
 
                     if(hideBefore)//for just showing current layer 
                         child.visible=false;
@@ -355,24 +397,78 @@ function GCodeObject3(settings=null) {
                     if(!window.PGCSettings.showTravel && child.userData.isTravel)
                         child.visible=false;
 
-                    child.geometry.maxInstancedCount=child.userData.numLines;
+                    if(child.geometry.type!="BufferGeometry")
+                        child.geometry.maxInstancedCount=child.userData.numLines;
+                    else
+                         child.geometry.setDrawRange(0,child.userData.numLines*2);
+
                 }else if (child.userData.layerNumber==layerNumber) {
-                    if(!child.visible || child.geometry.maxInstancedCount!=Math.min(lineNumber,child.userData.numLines))
+                    if(!child.visible)
                         needUpdate = true;
 
                     child.visible = true;
+                    
+                    if(child.geometry.type!="BufferGeometry")
+                        child.material = curMaterial;
+                    else
+                        child.material = curLineBasicMaterial;
 
                     //handle hiding travels.
                     if(!window.PGCSettings.showTravel && child.userData.isTravel)
                         child.visible=false;
 
-                    child.geometry.maxInstancedCount=Math.min(lineNumber,child.userData.numLines);
+                    if(child.geometry.type!="BufferGeometry")
+                        child.geometry.maxInstancedCount=Math.min(lineNumber,child.userData.numLines);
+                    else
+                        child.geometry.setDrawRange(0,Math.min(lineNumber*2,child.userData.numLines*2));
+                        
+                    // Ghost logic
+                    if (window.PGCSettings.showTransparentFuture && lineNumber < child.userData.numLines) {
+                         let ghost = child.children.find(c => c.name == "ghost");
+                         if (!ghost) {
+                             if (child.geometry.type!="BufferGeometry") { // Line2
+                                 ghost = new THREE.Line2(child.geometry, transparentMaterial);
+                             } else {
+                                 ghost = new THREE.Line(child.geometry, transparentBasicMaterial);
+                             }
+                             ghost.name = "ghost";
+                             ghost.renderOrder = -1;
+                             child.add(ghost);
+                         }
+                         ghost.visible = true;
+                         if(ghost.isLine2) ghost.material = transparentMaterial;
+                         else ghost.material = transparentBasicMaterial;
+                         
+                         if(ghost.geometry.type!="BufferGeometry")
+                            ghost.geometry.maxInstancedCount=child.userData.numLines;
+                         else
+                            ghost.geometry.setDrawRange(0,child.userData.numLines*2);
+                    } else {
+                        let ghost = child.children.find(c => c.name == "ghost");
+                        if(ghost) ghost.visible = false;
+                    }
+
                 }
                 else {
-                    if(child.visible)
-                        needUpdate = true;
-
-                    child.visible = false;
+                    if(window.PGCSettings.showTransparentFuture) {
+                        if(!child.visible) needUpdate = true;
+                        child.visible = true;
+                        
+                        if(child.geometry.type!="BufferGeometry") {
+                            child.material = transparentMaterial;
+                            child.geometry.maxInstancedCount=child.userData.numLines;
+                        } else {
+                            child.material = transparentBasicMaterial;
+                            child.geometry.setDrawRange(0, child.userData.numLines*2);
+                        }
+                        
+                        if(!window.PGCSettings.showTravel && child.userData.isTravel)
+                            child.visible=false;
+                    } else {
+                        if(child.visible)
+                            needUpdate = true;
+                        child.visible = false;
+                    }
                 }
             }
         });
@@ -408,13 +504,28 @@ function GCodeObject3(settings=null) {
     this.syncGcodeObjToFilePos=function (filePosition)
     {
         let syncLayerNumber = 0;//derived layer number based on pos and user data.
+        if(window.PGCSettings && window.PGCSettings.futureOpacity !== undefined) {
+             transparentMaterial.opacity = window.PGCSettings.futureOpacity;
+             if(transparentMaterial.uniforms && transparentMaterial.uniforms.opacity) {
+                transparentMaterial.uniforms.opacity.value = window.PGCSettings.futureOpacity;
+             }
+             transparentBasicMaterial.opacity = window.PGCSettings.futureOpacity;
+        }
+
         gcodeGroup.traverse(function (child) {
+            if (child.name.startsWith("ghost")) return;
+
             if (child.name.startsWith("layer#")) {
                 var filePositions=child.userData.filePositions;
                 var fpMin=filePositions[0];
                 var fpMax = filePositions[filePositions.length-1];
                 if (fpMax<filePosition) { //way before.
                     child.visible = true;
+                    
+                    if(child.geometry.type!="BufferGeometry")
+                        child.material = curMaterial;
+                    else
+                        child.material = curLineBasicMaterial;
 
                    //handle hiding travels.
                     if(!window.PGCSettings.showTravel && child.userData.isTravel)
@@ -425,10 +536,29 @@ function GCodeObject3(settings=null) {
                     else
                         child.geometry.setDrawRange(0,child.userData.numLines*2)//*2 for plain lines
                 }else if (fpMin>filePosition) { //way after
-                    child.visible = false;
+                    if(window.PGCSettings.showTransparentFuture) {
+                        child.visible = true;
+                        if(child.geometry.type!="BufferGeometry") {
+                            child.material = transparentMaterial;
+                            child.geometry.maxInstancedCount=child.userData.numLines;
+                        } else {
+                            child.material = transparentBasicMaterial;
+                            child.geometry.setDrawRange(0,child.userData.numLines*2);
+                        }
+                         //handle hiding travels.
+                        if(!window.PGCSettings.showTravel && child.userData.isTravel)
+                            child.visible=false;
+                    } else {
+                        child.visible = false;
+                    }
                 }else //must be during. right?
                 {
                     child.visible = true;
+                    
+                    if(child.geometry.type!="BufferGeometry")
+                        child.material = curMaterial;
+                    else
+                        child.material = curLineBasicMaterial;
 
                     //handle hiding travels.
                     if(!window.PGCSettings.showTravel && child.userData.isTravel)
@@ -444,6 +574,33 @@ function GCodeObject3(settings=null) {
                     else
                         child.geometry.setDrawRange(0,Math.min(count*2,child.userData.numLines*2));//*2 for plain lines
                     syncLayerNumber = child.userData.layerNumber
+                    
+                    // GHOST handling for current layer
+                    if(window.PGCSettings.showTransparentFuture) {
+                         let ghost = child.children.find(c => c.name == "ghost");
+                         if (!ghost) {
+                             if (child.geometry.type!="BufferGeometry") { // Line2
+                                 ghost = new THREE.Line2(child.geometry, transparentMaterial);
+                             } else {
+                                 ghost = new THREE.Line(child.geometry, transparentBasicMaterial);
+                             }
+                             ghost.name = "ghost";
+                             ghost.renderOrder = -1;
+                             child.add(ghost);
+                         }
+                         ghost.visible = true;
+                         // Update material in case opacity changed
+                         if(ghost.isLine2) ghost.material = transparentMaterial;
+                         else ghost.material = transparentBasicMaterial;
+                         
+                         if(ghost.geometry.type!="BufferGeometry")
+                            ghost.geometry.maxInstancedCount=child.userData.numLines;
+                         else
+                            ghost.geometry.setDrawRange(0,child.userData.numLines*2);
+                    } else {
+                        let ghost = child.children.find(c => c.name == "ghost");
+                        if(ghost) ghost.visible = false;
+                    }
                 }
             }
         });
