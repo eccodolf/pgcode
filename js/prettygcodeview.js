@@ -6,6 +6,7 @@ $(function () {
         var PGSettings = function () {
             //this.showMirror=false;//default changed
             this.fatLines=true;//default changed
+            this.lineWidth=3;
             this.showTravel=true;
             this.syncToProgress=true;
             this.orbitWhenIdle=false;
@@ -75,6 +76,7 @@ $(function () {
         var camera, cameraControls,cameraLight; 
         var scene, renderer; 
         var gcodeProxy;//used to display loaded gcode.
+        var highlightMaterial;
 
         var camera2d;
 
@@ -360,6 +362,15 @@ $(function () {
                 gui.add(pgSettings, 'showTravel');
                 gui.add(pgSettings, 'showTransparentFuture').name('Show Future').onChange(function(){ needRender=true; });
                 gui.add(pgSettings, 'futureOpacity', 0.0, 1.0).name('Future Opacity').onChange(function(){ needRender=true; });
+                gui.add(pgSettings, 'lineWidth', 1, 10).name('Line Width').onChange(function(){
+                    if(highlightMaterial){
+                        highlightMaterial.linewidth = pgSettings.lineWidth;
+                    }
+                    if(gcodeProxy){
+                         gcodeProxy.setLineWidth(pgSettings.lineWidth);
+                    }
+                    needRender=true;
+                });
 
                 //gui.add(pgSettings, 'fatLines').onFinishChange(pgSettings.reloadGcode);
                 //gui.add(pgSettings, 'reflections');
@@ -666,12 +677,12 @@ $(function () {
             var firstFrame=true;                 /*possible bug fix. this might not be needed.*/
 
             //material for fatline highlighter
-            var highlightMaterial = undefined;
+            highlightMaterial = undefined;
                         
             if(pgSettings.fatLines)
             {
                 highlightMaterial=new THREE.LineMaterial({
-                    linewidth: 3, // in pixels
+                    linewidth: pgSettings.lineWidth, // in pixels
                     //transparent: true,
                     //opacity: 0.5,
                     //color: new THREE.Color(curColorHex),// rainbow.getColor(layers.length % 64).getHex()
@@ -1229,6 +1240,7 @@ $(function () {
 
                     printHeadSim=new PrintHeadSimulator();
                     gcodeProxy = printHeadSim.getGcodeObject();
+                    if(gcodeProxy) gcodeProxy.setLineWidth(pgSettings.lineWidth);
                     var gcodeObject = gcodeProxy.getObject();
                     gcodeObject.position.set(-0, -0, 0);
                     scene.add(gcodeObject);
@@ -1258,6 +1270,7 @@ $(function () {
 
                         printHeadSim=new PrintHeadSimulator();
                         gcodeProxy = printHeadSim.getGcodeObject();
+                        if(gcodeProxy) gcodeProxy.setLineWidth(pgSettings.lineWidth);
                         var gcodeObject = gcodeProxy.getObject();
                         gcodeObject.position.set(-0, -0, 0);
                         scene.add(gcodeObject);

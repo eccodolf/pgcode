@@ -294,6 +294,11 @@ function GCodeObject3(settings=null) {
         return result;
     }
 
+    this.setLineWidth = function(width) {
+        curMaterial.linewidth = width;
+        transparentMaterial.linewidth = width;
+    }
+
     this.highlightLayer=function (layerNumber,highlightMaterial)
     {
         var needUpdate=false;//only need update if visiblity changes
